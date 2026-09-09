@@ -3,8 +3,7 @@ package misanthropy.brute_force_culling_revived.instanced.attribute;
 import com.mojang.blaze3d.vertex.VertexFormatElement;
 import org.jetbrains.annotations.NotNull;
 
-@SuppressWarnings("unused")
-public class GLFloatVertex extends GLVertex{
+public class GLFloatVertex extends GLVertex {
 
     public GLFloatVertex(int index, String name, int size) {
         super(index, name, size);
@@ -20,10 +19,6 @@ public class GLFloatVertex extends GLVertex{
 
     public static @NotNull GLFloatVertex createF3(int index, String name) {
         return new GLFloatVertex(index, name, 3);
-    }
-
-    public static @NotNull GLFloatVertex createF4(int index, String name) {
-        return new GLFloatVertex(index, name, 4);
     }
 
     @Override

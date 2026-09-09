@@ -25,6 +25,8 @@ public abstract class MixinShaderInstance implements ICullingShader {
     @Nullable
     public abstract Uniform getUniform(String name);
 
+    @Unique private boolean bruteForceRenderingRevived$hasCullingUniforms;
+
     @Unique @Nullable private Uniform CULLING_CAMERA_POS;
     @Unique @Nullable private Uniform CULLING_CAMERA_DIR;
     @Unique @Nullable private Uniform BOX_SCALE;
@@ -63,7 +65,16 @@ public abstract class MixinShaderInstance implements ICullingShader {
         this.FRUSTUM_POS = this.getUniform("FrustumPos");
         this.CULLING_VIEW_MAT = this.getUniform("CullingViewMat");
         this.CULLING_PROJ_MAT = this.getUniform("CullingProjMat");
+
+        this.bruteForceRenderingRevived$hasCullingUniforms =
+                this.CULLING_CAMERA_POS != null || this.CULLING_CAMERA_DIR != null || this.BOX_SCALE != null
+                        || this.RENDER_DISTANCE != null || this.DEPTH_SIZE != null || this.CULLING_SIZE != null
+                        || this.ENTITY_CULLING_SIZE != null || this.LEVEL_HEIGHT_OFFSET != null
+                        || this.LEVEL_MIN_SECTION != null || this.CULLING_FRUSTUM != null || this.FRUSTUM_POS != null
+                        || this.TEST_POS != null || this.CULLING_VIEW_MAT != null || this.CULLING_PROJ_MAT != null;
     }
+
+    @Override public boolean bruteForceRenderingRevived$hasCullingUniforms() { return bruteForceRenderingRevived$hasCullingUniforms; }
 
     @Override @Nullable public Uniform bruteForceRenderingRevived$getCullingFrustum() { return CULLING_FRUSTUM; }
     @Override @Nullable public Uniform bruteForceRenderingRevived$getCullingCameraPos() { return CULLING_CAMERA_POS; }

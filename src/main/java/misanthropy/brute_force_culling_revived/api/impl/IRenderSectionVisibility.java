@@ -1,9 +1,9 @@
 package misanthropy.brute_force_culling_revived.api.impl;
 
 public interface IRenderSectionVisibility {
-    boolean bruteForceRenderingRevived$shouldCheckVisibilityInverted(int clientTick);
+    boolean bruteForceRenderingRevived$isVisibleAtFrame(int clientTick);
 
-    void bruteForceRenderingRevived$updateVisibleTick(int clientTick);
+    void bruteForceRenderingRevived$markVisibleAtFrame(int clientTick);
 
     int bruteForceRenderingRevived$getPositionX();
 

@@ -2,6 +2,7 @@ package misanthropy.brute_force_culling_revived.api.data;
 
 import misanthropy.brute_force_culling_revived.api.Config;
 import misanthropy.brute_force_culling_revived.api.CullingStateManager;
+import net.minecraft.util.Mth;
 import net.minecraft.world.phys.Vec3;
 
 public class ChunkCullingMap extends CullingMap {
@@ -14,11 +15,6 @@ public class ChunkCullingMap extends CullingMap {
 
     public ChunkCullingMap(int width, int height) {
         super(width, height);
-    }
-
-    @Override
-    public void cleanup() {
-        super.cleanup();
     }
 
     @Override
@@ -43,8 +39,8 @@ public class ChunkCullingMap extends CullingMap {
 
     public void updateCamera() {
         Vec3 camera = CullingStateManager.CAMERA.getPosition();
-        this.cameraX = (int) camera.x >> 4;
-        this.cameraZ = (int) camera.z >> 4;
+        this.cameraX = Mth.floor(camera.x) >> 4;
+        this.cameraZ = Mth.floor(camera.z) >> 4;
     }
 
     public boolean isChunkOffsetCameraVisible(int x, int y, int z, boolean checkForChunk) {
@@ -57,6 +53,6 @@ public class ChunkCullingMap extends CullingMap {
         if (index >= 0 && index < cullingBuffer.limit()) {
             return (cullingBuffer.get(index) & 0xFF) > (checkForChunk ? 0 : 127);
         }
-        return false;
+        return true;
     }
 }

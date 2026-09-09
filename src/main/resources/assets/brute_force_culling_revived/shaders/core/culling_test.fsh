@@ -110,17 +110,21 @@ bool isVisible(vec3 vec) {
     return calculateCube(minX, minY, minZ, maxX, maxY, maxZ);
 }
 
+float unpackDepth(vec2 e) {
+    return e.x + e.y / 255.0;
+}
+
 float getUVDepth(int idx, vec2 uv) {
     if(idx == 0)
-    return texture(Sampler0, uv).r * 500;
+    return unpackDepth(texture(Sampler0, uv).rg) * 500.0;
     else if(idx == 1)
-    return texture(Sampler1, uv).r * 500;
+    return unpackDepth(texture(Sampler1, uv).rg) * 500.0;
     else if(idx == 2)
-    return texture(Sampler2, uv).r * 500;
+    return unpackDepth(texture(Sampler2, uv).rg) * 500.0;
     else if(idx == 3)
-    return texture(Sampler3, uv).r * 500;
+    return unpackDepth(texture(Sampler3, uv).rg) * 500.0;
 
-    return texture(Sampler4, uv).r * 500;
+    return unpackDepth(texture(Sampler4, uv).rg) * 500.0;
 }
 
 void main() {

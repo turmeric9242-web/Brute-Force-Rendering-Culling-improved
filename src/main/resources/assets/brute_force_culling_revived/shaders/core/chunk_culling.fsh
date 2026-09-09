@@ -10,7 +10,6 @@ uniform vec2 CullingSize;
 uniform mat4 CullingViewMat;
 uniform mat4 CullingProjMat;
 uniform vec3 CullingCameraPos;
-uniform vec3 CullingCameraDir;
 uniform vec3 FrustumPos;
 uniform float RenderDistance;
 uniform int LevelHeightOffset;
@@ -94,12 +93,16 @@ bool calculateCube(float minX, float minY, float minZ, float maxX, float maxY, f
     return cubeInFrustum(f, f1, f2, f3, f4, f5);
 }
 
+float unpackDepth(vec2 e) {
+    return e.x + e.y / 255.0;
+}
+
 float getUVDepth(int idx, vec2 uv) {
-    if(idx == 0) return texture(Sampler0, uv).r * 500.0;
-    else if(idx == 1) return texture(Sampler1, uv).r * 500.0;
-    else if(idx == 2) return texture(Sampler2, uv).r * 500.0;
-    else if(idx == 3) return texture(Sampler3, uv).r * 500.0;
-    return texture(Sampler4, uv).r * 500.0;
+    if(idx == 0) return unpackDepth(texture(Sampler0, uv).rg) * 500.0;
+    else if(idx == 1) return unpackDepth(texture(Sampler1, uv).rg) * 500.0;
+    else if(idx == 2) return unpackDepth(texture(Sampler2, uv).rg) * 500.0;
+    else if(idx == 3) return unpackDepth(texture(Sampler3, uv).rg) * 500.0;
+    return unpackDepth(texture(Sampler4, uv).rg) * 500.0;
 }
 
 void main() {

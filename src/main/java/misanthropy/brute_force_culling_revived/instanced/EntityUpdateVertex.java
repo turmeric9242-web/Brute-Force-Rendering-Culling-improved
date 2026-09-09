@@ -7,9 +7,10 @@ import java.nio.FloatBuffer;
 import java.util.function.Consumer;
 
 public class EntityUpdateVertex extends VertexAttrib {
+    private static final int CAPACITY = 2097152;
 
     public EntityUpdateVertex(int index) {
-        super(
+        super(CAPACITY,
                 GLFloatVertex.createF1(index,     "index"),
                 GLFloatVertex.createF2(index + 1, "Size"),
                 GLFloatVertex.createF3(index + 2, "EntityCenter")

@@ -1,24 +1,29 @@
 package misanthropy.brute_force_culling_revived.util;
 
-import org.jetbrains.annotations.NotNull;
+import it.unimi.dsi.fastutil.objects.Object2IntMap;
+import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
+import it.unimi.dsi.fastutil.objects.ObjectIterator;
 
-import java.util.HashMap;
-import java.util.Map;
 import java.util.function.Consumer;
 
 public class LifeTimer<T> {
-    private final @NotNull Map<T, Integer> usageTick;
-
-    public LifeTimer() {
-        usageTick = new HashMap<>();
-    }
+    private final Object2IntOpenHashMap<T> usageTick = new Object2IntOpenHashMap<>();
 
     public void tick(int clientTick, int count) {
-        usageTick.entrySet().removeIf(entry -> (clientTick - entry.getValue()) > count);
+        ObjectIterator<Object2IntMap.Entry<T>> iterator = usageTick.object2IntEntrySet().fastIterator();
+        while (iterator.hasNext()) {
+            if (clientTick - iterator.next().getIntValue() > count) {
+                iterator.remove();
+            }
+        }
     }
 
     public void updateUsageTick(T hash, int tick) {
         usageTick.put(hash, tick);
+    }
+
+    public void refreshIfPresent(T hash, int tick) {
+        usageTick.replace(hash, tick);
     }
 
     public boolean contains(T hash) {

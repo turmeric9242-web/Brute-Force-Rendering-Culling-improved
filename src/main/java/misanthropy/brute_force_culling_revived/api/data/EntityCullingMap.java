@@ -3,17 +3,15 @@ package misanthropy.brute_force_culling_revived.api.data;
 import misanthropy.brute_force_culling_revived.api.Config;
 import misanthropy.brute_force_culling_revived.api.CullingStateManager;
 import misanthropy.brute_force_culling_revived.api.ModLoader;
-import misanthropy.brute_force_culling_revived.util.IndexedSet;
+import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
+import it.unimi.dsi.fastutil.objects.ObjectLinkedOpenHashSet;
 import misanthropy.brute_force_culling_revived.util.LifeTimer;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.phys.AABB;
-import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.NotNull;
 
 import java.nio.FloatBuffer;
-import java.util.HashMap;
-import java.util.HashSet;
 import java.util.function.Consumer;
 
 import static net.minecraftforge.common.extensions.IForgeBlockEntity.INFINITE_EXTENT_AABB;
@@ -41,36 +39,31 @@ public class EntityCullingMap extends CullingMap {
     }
 
     public boolean isObjectVisible(Object o) {
-        AABB aabb = ModLoader.getObjectAABB(o);
-
-        if (aabb == INFINITE_EXTENT_AABB) {
-            return true;
-        }
-
-        int idx = getEntityTable().getIndex(o);
+        int idx = entityMap.getIndex(o);
         if (idx == -1) {
-            getEntityTable().addTemp(o, CullingStateManager.clientTickCount);
+            entityMap.addTemp(o, CullingStateManager.clientTickCount);
             return true;
         }
 
+        entityMap.tempObjectTimer.refreshIfPresent(o, CullingStateManager.clientTickCount);
 
+        return isSlotVisible(idx);
+    }
+
+    public boolean isObjectVisibleForTick(Object o) {
+        int idx = entityMap.getIndex(o);
+        return idx == -1 || isSlotVisible(idx);
+    }
+
+    private boolean isSlotVisible(int idx) {
         int bufferIdx = 1 + idx * 4;
-
-        if (getEntityTable().tempObjectTimer.contains(o)) {
-            getEntityTable().addTemp(o, CullingStateManager.clientTickCount);
-        }
-
-        if (bufferIdx < cullingBuffer.limit()) {
-            return (cullingBuffer.get(bufferIdx) & 0xFF) > 0;
-        }
-
-        return true;
+        return bufferIdx >= cullingBuffer.limit() || (cullingBuffer.get(bufferIdx) & 0xFF) > 0;
     }
 
     @Override
     public void readData() {
         super.readData();
-        getEntityTable().readUpload();
+        entityMap.readUpload();
     }
 
     public @NotNull EntityMap getEntityTable() {
@@ -80,18 +73,20 @@ public class EntityCullingMap extends CullingMap {
     @Override
     public void cleanup() {
         super.cleanup();
-        getEntityTable().clear();
+        entityMap.clear();
     }
 
     public static class EntityMap {
-        private final IndexedSet<Object> indexMap = new IndexedSet<>();
+        private final ObjectLinkedOpenHashSet<Object> indexMap = new ObjectLinkedOpenHashSet<>();
         public final LifeTimer<Object> tempObjectTimer = new LifeTimer<>();
-        private HashSet<Object> uploadTemp = new HashSet<>();
-        private HashSet<Object> readTemp = new HashSet<>();
-        private HashMap<Object, Integer> uploadEntity = new HashMap<>();
-        private HashMap<Object, Integer> readEntity = new HashMap<>();
+        private Object2IntOpenHashMap<Object> uploadEntity = newIndexMap();
+        private Object2IntOpenHashMap<Object> readEntity = newIndexMap();
+        private final AttributeWriter attributeWriter = new AttributeWriter();
 
-        public EntityMap() {
+        private static Object2IntOpenHashMap<Object> newIndexMap() {
+            Object2IntOpenHashMap<Object> map = new Object2IntOpenHashMap<>();
+            map.defaultReturnValue(-1);
+            return map;
         }
 
         public void addObject(Object obj) {
@@ -106,76 +101,93 @@ public class EntityCullingMap extends CullingMap {
 
         public void copyTemp(@NotNull EntityMap other, int tickCount) {
             other.tempObjectTimer.foreach(o -> addTemp(o, tickCount));
-            this.uploadTemp.addAll(other.uploadTemp);
             this.uploadEntity.putAll(other.uploadEntity);
-            this.readTemp.clear();
-            this.readTemp.addAll(this.uploadTemp);
             this.readEntity.clear();
-            this.readEntity.putAll(this.uploadEntity);
+            this.readEntity.putAll(other.readEntity);
         }
 
         public int getIndex(Object obj) {
-            return readEntity.getOrDefault(obj, -1);
+            return readEntity.getInt(obj);
         }
 
         public void readUpload() {
-            HashSet<Object> tempSet = readTemp;
-            readTemp = uploadTemp;
-            uploadTemp = tempSet;
-            uploadTemp.clear();
-            HashMap<Object, Integer> tempMap = readEntity;
+            Object2IntOpenHashMap<Object> tempMap = readEntity;
             readEntity = uploadEntity;
             uploadEntity = tempMap;
             uploadEntity.clear();
         }
 
         public void clearUpload() {
-            uploadTemp.clear();
             uploadEntity.clear();
         }
 
         public void clearIndexMap() {
             indexMap.clear();
         }
-        public void tickTemp(int tickCount) {
-            tempObjectTimer.tick(tickCount, 3);
+
+        public void tickTemp(int tickCount, int keepAliveTicks) {
+            tempObjectTimer.tick(tickCount, keepAliveTicks);
         }
+
         public void addAllTemp() {
             tempObjectTimer.foreach(this::addObject);
         }
+
         public void clear() {
             indexMap.clear();
             tempObjectTimer.clear();
-            uploadTemp.clear();
-            readTemp.clear();
             uploadEntity.clear();
             readEntity.clear();
         }
 
-        private void addAttribute(@NotNull Consumer<Consumer<FloatBuffer>> consumer, @NotNull AABB aabb, int index) {
-            consumer.accept(buffer -> {
-                buffer.put((float) index);
-                float size = (float) Math.max(aabb.getXsize(), aabb.getZsize());
-                buffer.put(size + 0.5F);
-                buffer.put((float) aabb.getYsize() + 0.5F);
-                Vec3 pos = aabb.getCenter();
-                buffer.put((float) pos.x);
-                buffer.put((float) pos.y);
-                buffer.put((float) pos.z);
-            });
+        private static final class AttributeWriter implements Consumer<FloatBuffer> {
+            private float index;
+            private float sizeXZ;
+            private float sizeY;
+            private float centerX;
+            private float centerY;
+            private float centerZ;
+
+            @Override
+            public void accept(@NotNull FloatBuffer buffer) {
+                buffer.put(index);
+                buffer.put(sizeXZ);
+                buffer.put(sizeY);
+                buffer.put(centerX);
+                buffer.put(centerY);
+                buffer.put(centerZ);
+            }
         }
 
         public void addEntityAttribute(@NotNull Consumer<Consumer<FloatBuffer>> consumer) {
             clearUpload();
-            indexMap.forEach((o, index) -> {
+            int stalenessTicks = CullingStateManager.getKeepAliveTicks();
+            AttributeWriter writer = attributeWriter;
+            int index = 0;
+            for (Object o : indexMap) {
+                int slot = index++;
                 AABB aabb = ModLoader.getObjectAABB(o);
-                if (aabb != null) {
-                    addAttribute(consumer, aabb, index);
-                    uploadTemp.add(o);
-                    uploadEntity.put(o, index);
+                if (aabb == null || aabb == INFINITE_EXTENT_AABB) continue;
+
+                float inflate = 0.0F;
+                if (o instanceof Entity e) {
+                    double step = Math.max(Math.abs(e.getX() - e.xOld),
+                            Math.max(Math.abs(e.getY() - e.yOld), Math.abs(e.getZ() - e.zOld)));
+                    inflate = (float) Math.min(step * stalenessTicks, 3.0);
                 }
-            });
+
+                writer.index = slot;
+                writer.sizeXZ = (float) Math.max(aabb.getXsize(), aabb.getZsize()) + 0.5F + inflate;
+                writer.sizeY = (float) aabb.getYsize() + 0.5F + inflate;
+                writer.centerX = (float) (aabb.minX + 0.5 * (aabb.maxX - aabb.minX));
+                writer.centerY = (float) (aabb.minY + 0.5 * (aabb.maxY - aabb.minY));
+                writer.centerZ = (float) (aabb.minZ + 0.5 * (aabb.maxZ - aabb.minZ));
+                consumer.accept(writer);
+
+                uploadEntity.put(o, slot);
+            }
         }
+
         public int size() {
             return indexMap.size();
         }

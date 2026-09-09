@@ -1,10 +1,17 @@
 package misanthropy.brute_force_culling_revived.api;
 
 import com.google.common.collect.ImmutableList;
+import misanthropy.brute_force_culling_revived.util.Benchmark;
 import misanthropy.brute_force_culling_revived.api.data.ChunkCullingMap;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.minecraftforge.common.ForgeConfigSpec;
+import net.minecraftforge.registries.ForgeRegistries;
 
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class Config {
 
@@ -14,9 +21,11 @@ public class Config {
     private static final ForgeConfigSpec.BooleanValue CULL_ENTITY;
     private static final ForgeConfigSpec.BooleanValue CULL_BLOCK_ENTITY;
     private static final ForgeConfigSpec.BooleanValue CULL_CHUNK;
+    private static final ForgeConfigSpec.BooleanValue TICK_CULLING;
     private static final ForgeConfigSpec.BooleanValue ASYNC;
     private static final ForgeConfigSpec.BooleanValue AUTO_DISABLE_ASYNC;
     private static final ForgeConfigSpec.IntValue UPDATE_DELAY;
+    private static final ForgeConfigSpec.IntValue ASYNC_SIGNAL_HZ;
     private static final ForgeConfigSpec.ConfigValue<List<? extends String>> ENTITY_SKIP;
     private static final ForgeConfigSpec.ConfigValue<List<? extends String>> BLOCK_ENTITY_SKIP;
     private static final ForgeConfigSpec.ConfigValue<List<? extends String>> MOD_SKIP;
@@ -24,20 +33,25 @@ public class Config {
     private static final double DEFAULT_SAMPLING = 0.5;
     private static final double MIN_SAMPLING = 0.05;
 
+    private static final Map<EntityType<?>, Boolean> ENTITY_SKIP_CACHE = new ConcurrentHashMap<>();
+    private static final Map<BlockEntityType<?>, Boolean> BLOCK_ENTITY_SKIP_CACHE = new ConcurrentHashMap<>();
+
     private static volatile boolean loaded = false;
 
     public static void setLoaded() {
-        loaded = true;
+        if (!loaded) loaded = true;
     }
 
     private static boolean unload() {
         return !loaded;
     }
 
+    private static boolean cullingOff() {
+        return !loaded || CullingStateManager.SHADER_INIT_FAILED || Benchmark.cullingDisabled();
+    }
+
     public static double getSampling() {
-        if (unload())
-            return DEFAULT_SAMPLING;
-        return Math.max(SAMPLING.get(), MIN_SAMPLING);
+        return unload() ? DEFAULT_SAMPLING : Math.max(SAMPLING.get(), MIN_SAMPLING);
     }
 
     public static void setSampling(double value) {
@@ -46,15 +60,11 @@ public class Config {
     }
 
     public static boolean doEntityCulling() {
-        if (unload() || !CullingStateManager.gl33())
-            return false;
-        return CULL_ENTITY.get() || CULL_BLOCK_ENTITY.get();
+        return !cullingOff() && CullingStateManager.gl33() && (CULL_ENTITY.get() || CULL_BLOCK_ENTITY.get());
     }
 
     public static boolean getCullEntity() {
-        if (unload() || !CullingStateManager.gl33())
-            return false;
-        return CULL_ENTITY.get();
+        return !cullingOff() && CullingStateManager.gl33() && CULL_ENTITY.get();
     }
 
     public static void setCullEntity(boolean value) {
@@ -63,9 +73,7 @@ public class Config {
     }
 
     public static boolean getCullBlockEntity() {
-        if (unload() || !CullingStateManager.gl33())
-            return false;
-        return CULL_BLOCK_ENTITY.get();
+        return !cullingOff() && CullingStateManager.gl33() && CULL_BLOCK_ENTITY.get();
     }
 
     public static void setCullBlockEntity(boolean value) {
@@ -73,19 +81,23 @@ public class Config {
         CULL_BLOCK_ENTITY.save();
     }
 
+    public static boolean getTickCulling() {
+        return !cullingOff() && TICK_CULLING.get();
+    }
+
+    public static void setTickCulling(boolean value) {
+        TICK_CULLING.set(value);
+        TICK_CULLING.save();
+    }
+
     public static boolean getCullChunk() {
-        if (unload())
-            return false;
-        return CULL_CHUNK.get();
+        return !cullingOff() && CULL_CHUNK.get();
     }
 
     public static boolean shouldCullChunk() {
-        if (unload())
-            return false;
+        if (cullingOff()) return false;
         ChunkCullingMap chunkCullingMap = CullingStateManager.CHUNK_CULLING_MAP;
-        if (chunkCullingMap == null || !chunkCullingMap.isDone())
-            return false;
-        return CULL_CHUNK.get();
+        return chunkCullingMap != null && chunkCullingMap.isDone() && CULL_CHUNK.get();
     }
 
     public static void setCullChunk(boolean value) {
@@ -93,39 +105,28 @@ public class Config {
         CULL_CHUNK.save();
     }
 
+    private static boolean asyncAvailable() {
+        return !unload()
+                && shouldCullChunk()
+                && !CullingStateManager.needPauseRebuild()
+                && ModLoader.hasSodium()
+                && !ModLoader.hasNvidium();
+    }
+
     public static boolean getAsyncChunkRebuild() {
-        if (unload())
-            return false;
-        if (!shouldCullChunk())
-            return false;
-        if (CullingStateManager.needPauseRebuild())
-            return false;
-        if (!ModLoader.hasSodium())
-            return false;
-        if (ModLoader.hasNvidium())
-            return false;
-        if (getAutoDisableAsync() && CullingStateManager.enabledShader())
-            return false;
+        if (!asyncAvailable()) return false;
+        if (getAutoDisableAsync() && CullingStateManager.enabledShader()) return false;
         return ASYNC.get();
     }
 
     public static void setAsyncChunkRebuild(boolean value) {
-        if (!shouldCullChunk())
-            return;
-        if (!ModLoader.hasSodium())
-            return;
-        if (CullingStateManager.needPauseRebuild())
-            return;
-        if (ModLoader.hasNvidium())
-            return;
+        if (!shouldCullChunk() || !ModLoader.hasSodium() || CullingStateManager.needPauseRebuild() || ModLoader.hasNvidium()) return;
         ASYNC.set(value);
         ASYNC.save();
     }
 
     public static boolean getAutoDisableAsync() {
-        if (unload())
-            return false;
-        return AUTO_DISABLE_ASYNC.get();
+        return !unload() && AUTO_DISABLE_ASYNC.get();
     }
 
     public static void setAutoDisableAsync(boolean value) {
@@ -138,11 +139,15 @@ public class Config {
     }
 
     public static int getDepthUpdateDelay() {
-        if (unload())
-            return 1;
-
+        if (unload()) return 1;
         int delay = UPDATE_DELAY.get();
         return delay <= 9 ? delay + getShaderDynamicDelay() : delay;
+    }
+
+    public static long getAsyncSignalIntervalNanos() {
+        if (unload()) return 0L;
+        int hz = ASYNC_SIGNAL_HZ.get();
+        return hz <= 0 ? 0L : 1_000_000_000L / hz;
     }
 
     public static void setDepthUpdateDelay(int value) {
@@ -151,21 +156,42 @@ public class Config {
     }
 
     public static List<? extends String> getEntitiesSkip() {
-        if (unload())
-            return ImmutableList.of();
-        return ENTITY_SKIP.get();
+        return unload() ? ImmutableList.of() : ENTITY_SKIP.get();
     }
 
     public static List<? extends String> getBlockEntitiesSkip() {
-        if (unload())
-            return ImmutableList.of();
-        return BLOCK_ENTITY_SKIP.get();
+        return unload() ? ImmutableList.of() : BLOCK_ENTITY_SKIP.get();
     }
 
     public static List<? extends String> getModsSkip() {
-        if (unload())
-            return ImmutableList.of();
-        return MOD_SKIP.get();
+        return unload() ? ImmutableList.of() : MOD_SKIP.get();
+    }
+
+    public static boolean shouldSkipEntityType(EntityType<?> type) {
+        Boolean cached = ENTITY_SKIP_CACHE.get(type);
+        if (cached != null) return cached;
+        if (unload()) return false;
+        boolean skip = isSkipped(ForgeRegistries.ENTITY_TYPES.getKey(type), getEntitiesSkip());
+        ENTITY_SKIP_CACHE.put(type, skip);
+        return skip;
+    }
+
+    public static boolean shouldSkipBlockEntityType(BlockEntityType<?> type) {
+        Boolean cached = BLOCK_ENTITY_SKIP_CACHE.get(type);
+        if (cached != null) return cached;
+        if (unload()) return false;
+        boolean skip = isSkipped(BlockEntityType.getKey(type), getBlockEntitiesSkip());
+        BLOCK_ENTITY_SKIP_CACHE.put(type, skip);
+        return skip;
+    }
+
+    private static boolean isSkipped(ResourceLocation key, List<? extends String> typeSkip) {
+        return key != null && (getModsSkip().contains(key.getNamespace()) || typeSkip.contains(key.toString()));
+    }
+
+    public static void clearTypeSkipCaches() {
+        ENTITY_SKIP_CACHE.clear();
+        BLOCK_ENTITY_SKIP_CACHE.clear();
     }
 
     static {
@@ -177,6 +203,14 @@ public class Config {
 
         builder.push("Culling Map update delay");
         UPDATE_DELAY = builder.defineInRange("delay frame", 1, 0, 10);
+        builder.pop();
+
+        builder.push("Async search signal rate");
+        builder.comment(
+                "Highest rate, in hertz, at which the render thread wakes the occlusion culling thread.",
+                "Each wake is a kernel call, so signalling once per frame costs real time at high frame rates",
+                "while the culling map itself only refreshes every few frames. 0 disables the limit.");
+        ASYNC_SIGNAL_HZ = builder.defineInRange("max hertz", 120, 0, 1000);
         builder.pop();
 
         builder.push("Cull entity");
@@ -191,6 +225,16 @@ public class Config {
         CULL_CHUNK = builder.define("enabled", true);
         builder.pop();
 
+        builder.push("Tick culling");
+        builder.comment(
+                "Skips the client-side tick of entities that are currently culled.",
+                "Saves CPU when many entities are loaded, but culled entities stop producing",
+                "sounds, particles and animation until they become visible again.",
+                "Entities close to the camera, glowing entities, vehicles and anything on the",
+                "skip lists always keep ticking.");
+        TICK_CULLING = builder.define("enabled", false);
+        builder.pop();
+
         builder.push("Async chunk rebuild");
         ASYNC = builder.define("enabled", true);
         builder.pop();
@@ -202,7 +246,7 @@ public class Config {
         builder.comment("Entity skip CULLING").push("Entity ResourceLocation");
         ENTITY_SKIP = builder
                 .comment("Entities that skip culling, example: [\"minecraft:creeper\", \"minecraft:zombie\"]")
-                .defineList("list", List.of("create:stationary_contraption"), o -> o instanceof String);
+                .defineList("list", List.of("create:stationary_contraption", "minecraft:warden"), o -> o instanceof String);
         builder.pop();
 
         builder.comment("Block Entity skip CULLING").push("Block Entity ResourceLocation");

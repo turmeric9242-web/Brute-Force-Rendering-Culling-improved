@@ -1,28 +1,22 @@
 package misanthropy.brute_force_culling_revived.api;
 
-import com.mojang.blaze3d.pipeline.RenderTarget;
-import com.mojang.blaze3d.pipeline.TextureTarget;
 import com.mojang.blaze3d.platform.InputConstants;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.DefaultVertexFormat;
 import misanthropy.brute_force_culling_revived.api.data.ChunkCullingMap;
 import misanthropy.brute_force_culling_revived.api.impl.IAABBObject;
 import misanthropy.brute_force_culling_revived.gui.ConfigScreen;
+import misanthropy.brute_force_culling_revived.util.Benchmark;
 import misanthropy.brute_force_culling_revived.util.NvidiumUtil;
 import misanthropy.brute_force_culling_revived.util.OcclusionCullerThread;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.ShaderInstance;
-import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.Entity;
-import net.minecraft.world.level.ClipContext;
-import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.phys.AABB;
-import net.minecraft.world.phys.BlockHitResult;
-import net.minecraft.world.phys.Vec3;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.client.event.InputEvent;
 import net.minecraftforge.client.event.RegisterKeyMappingsEvent;
@@ -34,6 +28,7 @@ import net.minecraftforge.fml.DistExecutor;
 import net.minecraftforge.fml.ModLoadingContext;
 import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.config.ModConfig;
+import net.minecraftforge.fml.event.config.ModConfigEvent;
 import net.minecraftforge.fml.javafmlmod.FMLJavaModLoadingContext;
 import net.minecraftforge.fml.loading.FMLLoader;
 import net.minecraftforge.fml.loading.moddiscovery.ModInfo;
@@ -43,7 +38,6 @@ import org.joml.FrustumIntersection;
 import org.joml.Vector4f;
 import org.lwjgl.glfw.GLFW;
 
-import java.io.IOException;
 import java.lang.reflect.Field;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -69,6 +63,7 @@ public class ModLoader {
             MinecraftForge.EVENT_BUS.register(new CullingRenderEvent());
             ModLoadingContext.get().registerConfig(ModConfig.Type.CLIENT, Config.CLIENT_CONFIG);
             FMLJavaModLoadingContext.get().getModEventBus().addListener(this::registerKeyBinding);
+            FMLJavaModLoadingContext.get().getModEventBus().addListener(this::onConfigChanged);
 
             CullingStateManager.init();
         });
@@ -86,36 +81,17 @@ public class ModLoader {
             GLFW.GLFW_KEY_X,
             "key.category." + MOD_ID);
 
-    public static final KeyMapping TEST_CULL_KEY = new KeyMapping(MOD_ID + ".key.cull",
-            KeyConflictContext.IN_GAME,
-            InputConstants.Type.KEYSYM,
-            GLFW.GLFW_KEY_G,
-            "key.category." + MOD_ID);
-
     public void registerKeyBinding(@NotNull RegisterKeyMappingsEvent event) {
         event.register(CONFIG_KEY);
         event.register(DEBUG_KEY);
+    }
 
+    private void onConfigChanged(final ModConfigEvent event) {
+        Config.clearTypeSkipCaches();
     }
 
     private void registerShader() {
         RenderSystem.recordRenderCall(this::initShader);
-    }
-
-    public static ShaderInstance CULL_TEST_SHADER;
-    public static RenderTarget CULL_TEST_TARGET;
-
-    static {
-        RenderSystem.recordRenderCall(() -> {
-            Minecraft mc = Minecraft.getInstance();
-            CULL_TEST_TARGET = new TextureTarget(
-                    mc.getWindow().getWidth(),
-                    mc.getWindow().getHeight(),
-                    false,
-                    Minecraft.ON_OSX
-            );
-            CULL_TEST_TARGET.setClearColor(0.0F, 0.0F, 0.0F, 0.0F);
-        });
     }
 
     private void initShader() {
@@ -126,39 +102,49 @@ public class ModLoader {
             INSTANCED_ENTITY_CULLING_SHADER = new ShaderInstance(rm, new ResourceLocation(MOD_ID, "instanced_entity_culling"), DefaultVertexFormat.POSITION);
             COPY_DEPTH_SHADER              = new ShaderInstance(rm, new ResourceLocation(MOD_ID, "copy_depth"),               DefaultVertexFormat.POSITION);
             REMOVE_COLOR_SHADER            = new ShaderInstance(rm, new ResourceLocation(MOD_ID, "remove_color"),             DefaultVertexFormat.POSITION_COLOR_TEX);
-            CULL_TEST_SHADER               = new ShaderInstance(rm, new ResourceLocation(MOD_ID, "culling_test"),             DefaultVertexFormat.POSITION);
-        } catch (IOException e) {
-            throw new RuntimeException(e);
+        } catch (Throwable t) {
+            SHADER_INIT_FAILED = true;
+            CHUNK_CULLING_SHADER = null;
+            INSTANCED_ENTITY_CULLING_SHADER = null;
+            COPY_DEPTH_SHADER = null;
+            REMOVE_COLOR_SHADER = null;
+            LOGGER.error("Failed to init culling shaders, culling disabled for this session", t);
         }
     }
 
     @SubscribeEvent
-    public void onKeyboardInput(InputEvent.Key event) {
+    public void onKeyboardInput(InputEvent.@NotNull Key event) {
+        if (event.getAction() != InputConstants.PRESS) return;
+        onBindingPressed(InputConstants.getKey(event.getKey(), event.getScanCode()));
+    }
 
+    @SubscribeEvent
+    public void onMouseInput(InputEvent.MouseButton.@NotNull Post event) {
+        if (event.getAction() != InputConstants.PRESS) return;
+        onBindingPressed(InputConstants.Type.MOUSE.getOrCreate(event.getButton()));
+    }
+
+    private static void onBindingPressed(InputConstants.Key pressed) {
         Minecraft mc = Minecraft.getInstance();
         if (mc.player == null) return;
 
-        if (CONFIG_KEY.isDown()) {
+        if (isTriggered(CONFIG_KEY, pressed)) {
             mc.setScreen(new ConfigScreen(Component.translatable(MOD_ID + ".config")));
-        }
-        if (DEBUG_KEY.isDown()) {
-            DEBUG++;
-            if (DEBUG >= 3) DEBUG = 0;
-        }
-        if (TEST_CULL_KEY.isDown()) {
-            Vec3 eyePos = mc.player.getEyePosition();
-            Vec3 target = eyePos.add(mc.player.getViewVector(0.0F).scale(999));
-            Level level = mc.player.level();
-
-            BlockHitResult hitResult = level.clip(new ClipContext(eyePos, target, ClipContext.Block.VISUAL, ClipContext.Fluid.NONE, mc.player));
-            BlockPos pos = hitResult.getBlockPos();
-            testPos = new BlockPos(pos.getX() >> 4, pos.getY() >> 4, pos.getZ() >> 4);
+        } else if (isTriggered(DEBUG_KEY, pressed)) {
+            if (Benchmark.isActive()) {
+                Benchmark.cancel();
+                return;
+            }
+            DEBUG = (DEBUG + 1) % 3;
+            if (DEBUG == 0) {
+                checkCulling = false;
+                checkTexture = false;
+            }
         }
     }
 
-    public static @NotNull BlockPos testPos = new BlockPos(0, 8, 0);
-
-    public static void onKeyPress() {
+    private static boolean isTriggered(@NotNull KeyMapping mapping, InputConstants.Key pressed) {
+        return mapping.getKey().equals(pressed) && mapping.isDown();
     }
 
     @SubscribeEvent
@@ -167,16 +153,18 @@ public class ModLoader {
 
         Minecraft mc = Minecraft.getInstance();
 
+        Benchmark.onClientTick();
+
+        tickCulling = 0;
+        tickEntityCount = 0;
+
         if (mc.player != null && mc.level != null) {
             clientTickCount++;
             ChunkCullingMap chunkCullingMap = CHUNK_CULLING_MAP;
             if (mc.player.tickCount > 60 && clientTickCount > 60
                     && chunkCullingMap != null && !chunkCullingMap.isDone()) {
                 chunkCullingMap.setDone();
-                LEVEL_SECTION_RANGE    = mc.level.getMaxSection() - mc.level.getMinSection();
-                LEVEL_MIN_SECTION_ABS  = Math.abs(mc.level.getMinSection());
-                LEVEL_MIN_POS          = mc.level.getMinBuildHeight();
-                LEVEL_POS_RANGE        = mc.level.getMaxBuildHeight() - mc.level.getMinBuildHeight();
+                updateLevelBounds(mc.level);
 
                 OcclusionCullerThread occlusionCullerThread = new OcclusionCullerThread();
                 occlusionCullerThread.setName("Chunk Depth Occlusion Cull thread");

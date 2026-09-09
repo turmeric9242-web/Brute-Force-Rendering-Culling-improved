@@ -81,17 +81,8 @@ dependencies {
 
     implementation fg.deobf("curse.maven:embeddium-908741:5681725")
     implementation fg.deobf("curse.maven:oculus-581495:6020952")
-    implementation fg.deobf("curse.maven:ars-nouveau-401955:6688854")
 
-    implementation("com.google.guava:guava:33.5.0-jre")
-    implementation("commons-io:commons-io:2.21.0")
-    implementation("io.netty:netty-handler:4.2.12.Final")
-    implementation("io.netty:netty-codec:4.2.12.Final")
-    implementation("io.netty:netty-common:4.2.12.Final")
-    implementation("org.apache.commons:commons-lang3:3.20.0")
-    implementation("org.apache.logging.log4j:log4j-core:2.25.4")
-    implementation("org.apache.commons:commons-compress:1.28.0")
-    implementation("org.codehaus.plexus:plexus-utils:4.0.3")
+    compileOnly fg.deobf("curse.maven:ars-nouveau-401955:6688854")
 
 }
 

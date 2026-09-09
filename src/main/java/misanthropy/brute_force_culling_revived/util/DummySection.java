@@ -14,12 +14,12 @@ public class DummySection implements IRenderSectionVisibility {
     }
 
     @Override
-    public boolean bruteForceRenderingRevived$shouldCheckVisibilityInverted(int clientTick) {
-        return true;
+    public boolean bruteForceRenderingRevived$isVisibleAtFrame(int clientTick) {
+        return false;
     }
 
     @Override
-    public void bruteForceRenderingRevived$updateVisibleTick(int clientTick) {
+    public void bruteForceRenderingRevived$markVisibleAtFrame(int clientTick) {
     }
 
     @Override

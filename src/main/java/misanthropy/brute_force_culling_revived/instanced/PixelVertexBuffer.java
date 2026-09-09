@@ -8,11 +8,12 @@ import java.nio.FloatBuffer;
 import java.util.function.Consumer;
 
 public class PixelVertexBuffer extends VertexAttrib {
+    private static final int CAPACITY = 64;
 
     private final int componentStride;
 
     public PixelVertexBuffer(int index) {
-        super(GLFloatVertex.createF2(index, "Position"));
+        super(CAPACITY, GLFloatVertex.createF2(index, "Position"));
 
         int stride = 0;
         for (GLVertex vertex : vertices) {

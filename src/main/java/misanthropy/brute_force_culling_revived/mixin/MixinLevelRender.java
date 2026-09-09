@@ -5,7 +5,6 @@ import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import misanthropy.brute_force_culling_revived.api.CullingStateManager;
 import misanthropy.brute_force_culling_revived.api.impl.IEntitiesForRender;
 import net.minecraft.client.renderer.LevelRenderer;
-import net.minecraft.client.renderer.ViewArea;
 import net.minecraft.client.renderer.culling.Frustum;
 import net.minecraft.world.phys.Vec3;
 import org.joml.Matrix4f;
@@ -16,22 +15,12 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-import javax.annotation.Nullable;
-
 @Mixin(LevelRenderer.class)
 public abstract class MixinLevelRender implements IEntitiesForRender {
 
     @Final
     @Shadow
     private ObjectArrayList<LevelRenderer.RenderChunkInfo> renderChunksInFrustum;
-
-    @Shadow
-    @Nullable
-    private ViewArea viewArea;
-
-    protected MixinLevelRender(@Nullable ViewArea viewArea) {
-        this.viewArea = viewArea;
-    }
 
     @Inject(method = "applyFrustum", at = @At(value = "HEAD"))
     public void onApplyFrustumHead(Frustum p_194355_, CallbackInfo ci) {

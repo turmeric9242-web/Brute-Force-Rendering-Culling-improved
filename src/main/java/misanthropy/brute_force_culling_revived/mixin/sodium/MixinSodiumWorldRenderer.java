@@ -29,8 +29,9 @@ public abstract class MixinSodiumWorldRenderer {
     @Inject(method = "setupTerrain", at = @At(value = "HEAD"), remap = false)
     public void injectTerrainSetup(Camera camera, Viewport viewport, int frame, boolean spectator, boolean updateChunksImmediately, CallbackInfo ci) {
         if (Config.shouldCullChunk()) {
-            SodiumSectionAsyncUtil.update(viewport, ((AccessorRenderSectionManager) this.renderSectionManager).invokeSearchDistance()
-                    , ((AccessorRenderSectionManager) this.renderSectionManager).invokeShouldUseOcclusionCulling(camera, spectator));
+            AccessorRenderSectionManager accessor = (AccessorRenderSectionManager) this.renderSectionManager;
+            SodiumSectionAsyncUtil.update(viewport, accessor.invokeSearchDistance(),
+                    accessor.invokeShouldUseOcclusionCulling(camera, spectator));
             if (SodiumSectionAsyncUtil.needSyncRebuild) {
                 this.renderSectionManager.markGraphDirty();
                 SodiumSectionAsyncUtil.needSyncRebuild = false;

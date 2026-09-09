@@ -19,12 +19,12 @@ public abstract class MixinRenderChunk implements IRenderSectionVisibility {
     private int bruteForceRenderingRevived$cullingLastVisibleFrame;
 
     @Override
-    public boolean bruteForceRenderingRevived$shouldCheckVisibilityInverted(int frame) {
-        return frame != bruteForceRenderingRevived$cullingLastVisibleFrame;
+    public boolean bruteForceRenderingRevived$isVisibleAtFrame(int frame) {
+        return frame == bruteForceRenderingRevived$cullingLastVisibleFrame;
     }
 
     @Override
-    public void bruteForceRenderingRevived$updateVisibleTick(int frame) {
+    public void bruteForceRenderingRevived$markVisibleAtFrame(int frame) {
         bruteForceRenderingRevived$cullingLastVisibleFrame = frame;
     }
 

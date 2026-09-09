@@ -6,6 +6,7 @@ import com.mojang.blaze3d.vertex.*;
 import misanthropy.brute_force_culling_revived.api.Config;
 import misanthropy.brute_force_culling_revived.api.CullingStateManager;
 import misanthropy.brute_force_culling_revived.api.ModLoader;
+import misanthropy.brute_force_culling_revived.util.Benchmark;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.AbstractWidget;
@@ -71,20 +72,23 @@ public class ConfigScreen extends Screen {
         guiGraphics.flush();
         RenderSystem.disableDepthTest();
 
-        RenderSystem.setShaderColor(1.0F, 1.0F, 1.0F, 0.1f);
-        CullingStateManager.useShader(CullingStateManager.REMOVE_COLOR_SHADER);
-
         Tesselator tesselator = Tesselator.getInstance();
         BufferBuilder bufferbuilder = tesselator.getBuilder();
-        bufferbuilder.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_COLOR_TEX);
 
-        bufferbuilder.vertex(right - 1, bottom + 1, 0.0D).color(bgColor, bgColor, bgColor, bgAlpha).uv(getU(right - 1, windowWidth), getV(bottom + 1, windowHeight)).endVertex();
-        bufferbuilder.vertex(left + 1, bottom + 1, 0.0D).color(bgColor, bgColor, bgColor, bgAlpha).uv(getU(left + 1, windowWidth), getV(bottom + 1, windowHeight)).endVertex();
-        bufferbuilder.vertex(left + 1, top - 1, 0.0D).color(bgColor, bgColor, bgColor, bgAlpha).uv(getU(left + 1, windowWidth), getV(top - 1, windowHeight)).endVertex();
-        bufferbuilder.vertex(right - 1, top - 1, 0.0D).color(bgColor, bgColor, bgColor, bgAlpha).uv(getU(right - 1, windowWidth), getV(top - 1, windowHeight)).endVertex();
+        if (CullingStateManager.REMOVE_COLOR_SHADER != null) {
+            RenderSystem.setShaderColor(1.0F, 1.0F, 1.0F, 0.1f);
+            CullingStateManager.useShader(CullingStateManager.REMOVE_COLOR_SHADER);
 
-        RenderSystem.setShaderTexture(0, mc.getMainRenderTarget().getColorTextureId());
-        BufferUploader.drawWithShader(bufferbuilder.end());
+            bufferbuilder.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_COLOR_TEX);
+
+            bufferbuilder.vertex(right - 1, bottom + 1, 0.0D).color(bgColor, bgColor, bgColor, bgAlpha).uv(getU(right - 1, windowWidth), getV(bottom + 1, windowHeight)).endVertex();
+            bufferbuilder.vertex(left + 1, bottom + 1, 0.0D).color(bgColor, bgColor, bgColor, bgAlpha).uv(getU(left + 1, windowWidth), getV(bottom + 1, windowHeight)).endVertex();
+            bufferbuilder.vertex(left + 1, top - 1, 0.0D).color(bgColor, bgColor, bgColor, bgAlpha).uv(getU(left + 1, windowWidth), getV(top - 1, windowHeight)).endVertex();
+            bufferbuilder.vertex(right - 1, top - 1, 0.0D).color(bgColor, bgColor, bgColor, bgAlpha).uv(getU(right - 1, windowWidth), getV(top - 1, windowHeight)).endVertex();
+
+            RenderSystem.setShaderTexture(0, mc.getMainRenderTarget().getColorTextureId());
+            BufferUploader.drawWithShader(bufferbuilder.end());
+        }
 
         bgAlpha = 1.0f;
         RenderSystem.setShader(GameRenderer::getPositionColorShader);
@@ -135,12 +139,18 @@ public class ConfigScreen extends Screen {
 
         this.textWidth = 0;
 
-        if (this.minecraft.player.getName().getString().equals("Dev")) {
-            addConfigButton(() -> CullingStateManager.checkCulling, (b) -> CullingStateManager.checkCulling = b, () -> Component.literal("Debug"))
+        if (CullingStateManager.DEBUG > 0) {
+            addConfigButton(() -> CullingStateManager.checkCulling, (b) -> CullingStateManager.checkCulling = b, () -> Component.translatable("brute_force_culling_revived.check_culling"))
                     .setDetailMessage(() -> Component.translatable("brute_force_culling_revived.detail.debug"));
 
-            addConfigButton(() -> CullingStateManager.checkTexture, (b) -> CullingStateManager.checkTexture = b, () -> Component.literal("Check Texture"))
+            addConfigButton(() -> CullingStateManager.checkTexture, (b) -> CullingStateManager.checkTexture = b, () -> Component.translatable("brute_force_culling_revived.check_texture"))
                     .setDetailMessage(() -> Component.translatable("brute_force_culling_revived.detail.check_texture"));
+
+            addConfigButton(Benchmark::isActive, (b) -> {
+                Benchmark.toggle(b);
+                if (b) onClose();
+            }, () -> Component.translatable("brute_force_culling_revived.benchmark"))
+                    .setDetailMessage(() -> Component.translatable("brute_force_culling_revived.detail.benchmark"));
         }
 
         addConfigButton(Config::getSampling, (value) -> {
@@ -178,6 +188,9 @@ public class ConfigScreen extends Screen {
 
         addConfigButton(Config::getCullEntity, Config::setCullEntity, () -> Component.translatable("brute_force_culling_revived.cull_entity"))
                 .setDetailMessage(() -> CullingStateManager.gl33() ? Component.translatable("brute_force_culling_revived.detail.cull_entity") : Component.translatable("brute_force_culling_revived.detail.gl33"));
+
+        addConfigButton(Config::getCullEntity, Config::getTickCulling, Config::setTickCulling, () -> Component.translatable("brute_force_culling_revived.tick_culling"))
+                .setDetailMessage(() -> Component.translatable("brute_force_culling_revived.detail.tick_culling"));
 
         super.init();
     }

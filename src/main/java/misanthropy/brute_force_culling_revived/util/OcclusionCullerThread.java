@@ -12,24 +12,45 @@ public class OcclusionCullerThread extends Thread {
     public static OcclusionCullerThread INSTANCE;
     private volatile boolean finished = false;
     private static final Semaphore TICK_SEMAPHORE = new Semaphore(0);
+    private static long lastSignalNanos;
 
     public OcclusionCullerThread() {
         super("BFR-OcclusionCuller");
         this.setDaemon(true);
-        if (INSTANCE != null) {
-            INSTANCE.finished = true;
-            TICK_SEMAPHORE.release();
+        OcclusionCullerThread previous = INSTANCE;
+        if (previous != null) {
+            previous.finished = true;
+            previous.interrupt();
         }
+        TICK_SEMAPHORE.drainPermits();
         INSTANCE = this;
     }
 
     public static void shouldUpdate() {
-        if (Config.getAsyncChunkRebuild() && ModLoader.hasSodium()) {
-            if (TICK_SEMAPHORE.availablePermits() < 1) {
-                TICK_SEMAPHORE.release();
-            }
-            SodiumSectionAsyncUtil.shouldUpdate();
+        if (!Config.getAsyncChunkRebuild() || !ModLoader.hasSodium()) {
+            return;
         }
+        if (TICK_SEMAPHORE.availablePermits() >= 1) {
+            return;
+        }
+        if (CullingStateManager.needPauseRebuild() || !SodiumSectionAsyncUtil.hasCuller()) {
+            return;
+        }
+        ChunkCullingMap chunkCullingMap = CullingStateManager.CHUNK_CULLING_MAP;
+        if (chunkCullingMap == null || !chunkCullingMap.isDone()) {
+            return;
+        }
+
+        long interval = Config.getAsyncSignalIntervalNanos();
+        if (interval > 0L) {
+            long now = System.nanoTime();
+            if (now - lastSignalNanos < interval) {
+                return;
+            }
+            lastSignalNanos = now;
+        }
+
+        TICK_SEMAPHORE.release();
     }
 
     @Override
@@ -46,7 +67,9 @@ public class OcclusionCullerThread extends Thread {
                 ChunkCullingMap chunkCullingMap = CullingStateManager.CHUNK_CULLING_MAP;
                 if (chunkCullingMap != null && chunkCullingMap.isDone()) {
                     if (Config.getAsyncChunkRebuild() && ModLoader.hasSodium()) {
+                        long start = System.nanoTime();
                         SodiumSectionAsyncUtil.asyncSearchRebuildSection();
+                        CullingStateManager.addChunkCullingTime(System.nanoTime() - start);
                     }
                 }
             } catch (InterruptedException e) {

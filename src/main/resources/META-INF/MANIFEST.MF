@@ -1,2 +1,0 @@
-Manifest-Version: 1.0
-MixinConnector: mixin.misanthropy.brute_force_culling_revived.MixinConnector

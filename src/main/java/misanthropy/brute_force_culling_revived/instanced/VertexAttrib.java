@@ -8,28 +8,24 @@ import org.lwjgl.opengl.GL15;
 import org.lwjgl.opengl.GL33;
 import org.lwjgl.system.MemoryUtil;
 
-import java.nio.*;
+import java.nio.FloatBuffer;
 import java.util.List;
 import java.util.function.Consumer;
 
 import static org.lwjgl.opengl.GL15.*;
 
-@SuppressWarnings("unused")
 public abstract class VertexAttrib implements AutoCloseable {
     protected final List<GLVertex> vertices;
     protected final int vertexID;
     protected final int vertexSize;
     private int vertexCount;
 
-    private static final int INITIAL_FLOAT_CAPACITY = 2097152;
+    protected final @NotNull FloatBuffer buffer;
 
-    protected @NotNull FloatBuffer buffer = MemoryUtil.memAllocFloat(INITIAL_FLOAT_CAPACITY);
-
-    public VertexAttrib(GLVertex @NotNull ... vertices) {
-
+    public VertexAttrib(int floatCapacity, GLVertex @NotNull ... vertices) {
         this.vertices = List.of(vertices);
-
-        vertexID = GlStateManager._glGenBuffers();
+        this.buffer = MemoryUtil.memAllocFloat(floatCapacity);
+        this.vertexID = GlStateManager._glGenBuffers();
 
         int size = 0;
         for (GLVertex vertex : this.vertices) {
@@ -51,7 +47,6 @@ public abstract class VertexAttrib implements AutoCloseable {
     public abstract void addAttrib(Consumer<FloatBuffer> bufferConsumer);
 
     public void bind() {
-
         GL15.glBindBuffer(GL_ARRAY_BUFFER, vertexID);
     }
 
@@ -62,7 +57,6 @@ public abstract class VertexAttrib implements AutoCloseable {
 
         if (update) {
             buffer.flip();
-
             GL15.glBufferData(GL_ARRAY_BUFFER, buffer, GL_STREAM_DRAW);
         }
 
@@ -83,36 +77,6 @@ public abstract class VertexAttrib implements AutoCloseable {
     }
 
     public abstract boolean needUpdate();
-
-    public void update(@NotNull FloatBuffer buffer) {
-        GL15.glBindBuffer(GL_ARRAY_BUFFER, this.vertexID);
-        GL15.glBufferData(GL_ARRAY_BUFFER, buffer, GL_STATIC_DRAW);
-    }
-
-    public void update(@NotNull ByteBuffer buffer) {
-        GL15.glBindBuffer(GL_ARRAY_BUFFER, this.vertexID);
-        GL15.glBufferData(GL_ARRAY_BUFFER, buffer, GL_STATIC_DRAW);
-    }
-
-    public void update(@NotNull IntBuffer buffer) {
-        GL15.glBindBuffer(GL_ARRAY_BUFFER, this.vertexID);
-        GL15.glBufferData(GL_ARRAY_BUFFER, buffer, GL_STATIC_DRAW);
-    }
-
-    public void update(@NotNull DoubleBuffer buffer) {
-        GL15.glBindBuffer(GL_ARRAY_BUFFER, this.vertexID);
-        GL15.glBufferData(GL_ARRAY_BUFFER, buffer, GL_STATIC_DRAW);
-    }
-
-    public void update(@NotNull LongBuffer buffer) {
-        GL15.glBindBuffer(GL_ARRAY_BUFFER, this.vertexID);
-        GL15.glBufferData(GL_ARRAY_BUFFER, buffer, GL_STATIC_DRAW);
-    }
-
-    public void update(@NotNull ShortBuffer buffer) {
-        GL15.glBindBuffer(GL_ARRAY_BUFFER, this.vertexID);
-        GL15.glBufferData(GL_ARRAY_BUFFER, buffer, GL_STATIC_DRAW);
-    }
 
     @Override
     public void close() {

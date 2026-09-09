@@ -13,6 +13,7 @@
     "AccessorLevelRender",
     "AccessorMinecraft",
     "MixinBlockEntityRender",
+    "MixinClientLevel",
     "MixinEntityRender",
     "MixinFrustum",
     "MixinInactiveProfiler",

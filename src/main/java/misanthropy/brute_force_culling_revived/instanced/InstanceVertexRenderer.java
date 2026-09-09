@@ -10,6 +10,9 @@ import net.minecraft.client.renderer.ShaderInstance;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.api.distmarker.OnlyIn;
 import org.jetbrains.annotations.NotNull;
+import org.lwjgl.opengl.GL11;
+import org.lwjgl.opengl.GL15;
+import org.lwjgl.opengl.GL30;
 import org.lwjgl.opengl.GL31;
 
 import java.nio.FloatBuffer;
@@ -40,17 +43,21 @@ public class InstanceVertexRenderer implements AutoCloseable {
         this.indexCount = mode.indexCount(mainAttrib.vertexCount());
     }
 
+    private static int boundVertexArray() {
+        return GL11.glGetInteger(GL30.GL_VERTEX_ARRAY_BINDING);
+    }
+
     public void init(Consumer<FloatBuffer> buffer) {
-        int previousVao = org.lwjgl.opengl.GL11.glGetInteger(org.lwjgl.opengl.GL30.GL_VERTEX_ARRAY_BINDING);
-        bindVertexArray();
+        int previousVao = boundVertexArray();
+        GlStateManager._glBindVertexArray(this.arrayObjectId);
         mainAttrib.bind();
         mainAttrib.init(buffer);
-        GlStateManager._glBindBuffer(org.lwjgl.opengl.GL15.GL_ARRAY_BUFFER, 0);
-        RenderSystem.glBindVertexArray(() -> previousVao);
+        GlStateManager._glBindBuffer(GL15.GL_ARRAY_BUFFER, 0);
+        GlStateManager._glBindVertexArray(previousVao);
     }
 
     public void bind() {
-        GlStateManager._glBindBuffer(org.lwjgl.opengl.GL15.GL_ELEMENT_ARRAY_BUFFER, 0);
+        GlStateManager._glBindBuffer(GL15.GL_ELEMENT_ARRAY_BUFFER, 0);
 
         RenderSystem.AutoStorageIndexBuffer autoStorageIndexBuffer = RenderSystem.getSequentialBuffer(this.mode);
         this.indexType = autoStorageIndexBuffer.type();
@@ -59,19 +66,19 @@ public class InstanceVertexRenderer implements AutoCloseable {
 
     public void addInstanceAttrib(Consumer<FloatBuffer> consumer) {
         if (!updating) {
-            int previousVao = org.lwjgl.opengl.GL11.glGetInteger(org.lwjgl.opengl.GL30.GL_VERTEX_ARRAY_BINDING);
-            bindVertexArray();
+            int previousVao = boundVertexArray();
+            GlStateManager._glBindVertexArray(this.arrayObjectId);
             update.bind();
             updating = true;
-            RenderSystem.glBindVertexArray(() -> previousVao);
-            GlStateManager._glBindBuffer(org.lwjgl.opengl.GL15.GL_ARRAY_BUFFER, 0);
+            GlStateManager._glBindVertexArray(previousVao);
+            GlStateManager._glBindBuffer(GL15.GL_ARRAY_BUFFER, 0);
         }
         update.addAttrib(consumer);
         instanceCount++;
     }
 
     public void unbind() {
-        GlStateManager._glBindBuffer(org.lwjgl.opengl.GL15.GL_ARRAY_BUFFER, 0);
+        GlStateManager._glBindBuffer(GL15.GL_ARRAY_BUFFER, 0);
     }
 
     public void enableVertexAttribArray() {
@@ -82,10 +89,6 @@ public class InstanceVertexRenderer implements AutoCloseable {
     public void disableVertexAttribArray() {
         mainAttrib.disableVertexAttribArray();
         update.disableVertexAttribArray();
-    }
-
-    private void bindVertexArray() {
-        RenderSystem.glBindVertexArray(() -> this.arrayObjectId);
     }
 
     public void drawWithShader(@NotNull ShaderInstance shader) {
@@ -105,7 +108,7 @@ public class InstanceVertexRenderer implements AutoCloseable {
 
         RenderSystem.assertOnRenderThread();
 
-        int previousVao = org.lwjgl.opengl.GL11.glGetInteger(org.lwjgl.opengl.GL30.GL_VERTEX_ARRAY_BINDING);
+        int previousVao = boundVertexArray();
 
         for (int i = 0; i < SAMPLER_NAMES.length; ++i) {
             shader.setSampler(SAMPLER_NAMES[i], RenderSystem.getShaderTexture(i));
@@ -132,7 +135,7 @@ public class InstanceVertexRenderer implements AutoCloseable {
         CullingRenderEvent.setUniform(shader);
         RenderSystem.setupShaderLights(shader);
 
-        bindVertexArray();
+        GlStateManager._glBindVertexArray(this.arrayObjectId);
         bind();
         update.bind();
         enableVertexAttribArray();
@@ -144,9 +147,9 @@ public class InstanceVertexRenderer implements AutoCloseable {
         disableVertexAttribArray();
         unbind();
 
-        GlStateManager._glBindBuffer(org.lwjgl.opengl.GL15.GL_ELEMENT_ARRAY_BUFFER, 0);
+        GlStateManager._glBindBuffer(GL15.GL_ELEMENT_ARRAY_BUFFER, 0);
 
-        RenderSystem.glBindVertexArray(() -> previousVao);
+        GlStateManager._glBindVertexArray(previousVao);
     }
 
     @Override

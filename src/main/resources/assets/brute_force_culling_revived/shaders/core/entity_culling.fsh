@@ -3,7 +3,6 @@
 uniform vec2 EntityCullingSize;
 uniform mat4 CullingViewMat;
 uniform vec3 CullingCameraPos;
-uniform vec3 CullingCameraDir;
 uniform mat4 CullingProjMat;
 uniform vec3 FrustumPos;
 
@@ -22,6 +21,7 @@ out vec4 fragColor;
 
 float near = 0.1;
 float far  = 1000.0;
+float depthBias = 0.25;
 
 int getSampler(float xLength, float yLength) {
     for (int i = 0; i < 5; ++i) {
@@ -92,12 +92,16 @@ bool isVisible(vec3 vec, float width, float height) {
     return calculateCube(minX, minY, minZ, maxX, maxY, maxZ);
 }
 
+float unpackDepth(vec2 e) {
+    return e.x + e.y / 255.0;
+}
+
 float getUVDepth(int idx, vec2 uv) {
-    if (idx == 0) return texture(Sampler0, uv).r * 500.0;
-    else if (idx == 1) return texture(Sampler1, uv).r * 500.0;
-    else if (idx == 2) return texture(Sampler2, uv).r * 500.0;
-    else if (idx == 3) return texture(Sampler3, uv).r * 500.0;
-    return texture(Sampler4, uv).r * 500.0;
+    if (idx == 0) return unpackDepth(texture(Sampler0, uv).rg) * 500.0;
+    else if (idx == 1) return unpackDepth(texture(Sampler1, uv).rg) * 500.0;
+    else if (idx == 2) return unpackDepth(texture(Sampler2, uv).rg) * 500.0;
+    else if (idx == 3) return unpackDepth(texture(Sampler3, uv).rg) * 500.0;
+    return unpackDepth(texture(Sampler4, uv).rg) * 500.0;
 }
 
 void main() {
@@ -105,7 +109,7 @@ void main() {
     float halfHeight = Size.y * 0.5;
 
     if (!isVisible(Pos, halfWidth, halfHeight)) {
-        fragColor = vec4(0.0, 0.0, 1.0, 1.0);
+        fragColor = vec4(0.0, 1.0, 0.0, 1.0);
         return;
     }
 
@@ -141,7 +145,9 @@ void main() {
     float xStep = 1.0 / DepthScreenSize[idx].x;
     float yStep = 1.0 / DepthScreenSize[idx].y;
 
-    float entityDepth = LinearizeDepth(worldToScreenSpace(moveTowardsCamera(Pos, halfWidth)).z) - 1.0;
+    vec3 towardsEntity = normalize(Pos - CullingCameraPos);
+    float nearSurfaceOffset = dot(abs(towardsEntity), vec3(halfWidth, halfHeight, halfWidth));
+    float entityDepth = LinearizeDepth(worldToScreenSpace(moveTowardsCamera(Pos, nearSurfaceOffset)).z) - depthBias;
 
     for (float x = minX; x <= maxX + 0.001; x += max((maxX - minX) / 3.0, 0.001)) {
         for (float y = minY; y <= maxY + 0.001; y += max((maxY - minY) / 3.0, 0.001)) {

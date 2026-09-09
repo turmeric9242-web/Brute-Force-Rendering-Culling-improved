@@ -18,14 +18,14 @@ import java.util.function.Function;
 import java.util.function.Supplier;
 
 public class NeatSliderButton extends AbstractOptionSliderButton {
-    private final @NotNull Function<NeatSliderButton, Component> nameFunc;
+    private final @NotNull Supplier<Component> nameFunc;
     private final @NotNull Consumer<Double> applyValue;
     private Supplier<Component> detailMessage;
     private Supplier<Integer> textWidth;
 
     protected NeatSliderButton(int x, int y, int w, int h, @NotNull Supplier<Double> getter, @NotNull Function<Double, Double> setter, @NotNull Function<Double, String> display, @NotNull Supplier<MutableComponent> name) {
         super(Minecraft.getInstance().options, x, y, w, h, getter.get());
-        this.nameFunc = (slider) -> name.get().append(": ").append(Component.literal(display.apply(this.value)));
+        this.nameFunc = () -> name.get().append(": ").append(Component.literal(display.apply(this.value)));
         this.applyValue = (val) -> this.value = setter.apply(val);
         updateMessage();
     }
@@ -40,7 +40,7 @@ public class NeatSliderButton extends AbstractOptionSliderButton {
 
     @Override
     public void updateMessage() {
-        this.setMessage(nameFunc.apply(this));
+        this.setMessage(nameFunc.get());
     }
 
     @Override

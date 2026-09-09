@@ -1,5 +1,7 @@
 package misanthropy.brute_force_culling_revived.mixin.sodium;
 
+import com.llamalad7.mixinextras.injector.ModifyReturnValue;
+import com.llamalad7.mixinextras.sugar.Local;
 import it.unimi.dsi.fastutil.longs.Long2ReferenceMap;
 import me.jellysquid.mods.sodium.client.gl.device.CommandList;
 import me.jellysquid.mods.sodium.client.render.chunk.RenderSection;
@@ -22,8 +24,6 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.ModifyVariable;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
-import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
-import org.spongepowered.asm.mixin.injection.callback.LocalCapture;
 
 @Mixin(RenderSectionManager.class)
 public abstract class MixinRenderSectionManager {
@@ -46,15 +46,18 @@ public abstract class MixinRenderSectionManager {
         SodiumSectionAsyncUtil.reset();
     }
 
-    @Inject(method = "isSectionVisible", at = @At(value = "RETURN"), remap = false, locals = LocalCapture.CAPTURE_FAILHARD, cancellable = true)
-    private void onIsSectionVisible(int x, int y, int z, @NotNull CallbackInfoReturnable<Boolean> cir, @NotNull RenderSection section) {
-        if (Config.shouldCullChunk()) {
-            cir.setReturnValue(
-                    CullingStateManager.shouldRenderChunk((IRenderSectionVisibility) section, false)
-                            && CullingStateManager.FRUSTUM.isVisible(new AABB(section.getOriginX(), section.getOriginY(), section.getOriginZ()
-                            , section.getOriginX()+16, section.getOriginY()+16, section.getOriginZ()+16))
-            );
+    @ModifyReturnValue(method = "isSectionVisible", at = @At(value = "RETURN"), remap = false)
+    private boolean onIsSectionVisible(boolean visible, int x, int y, int z, @Local RenderSection section) {
+        if (!Config.shouldCullChunk()) return visible;
+
+        if (!CullingStateManager.shouldRenderChunk((IRenderSectionVisibility) section, false)) {
+            return false;
         }
+
+        int ox = section.getOriginX();
+        int oy = section.getOriginY();
+        int oz = section.getOriginZ();
+        return CullingStateManager.FRUSTUM.isVisible(new AABB(ox, oy, oz, ox + 16, oy + 16, oz + 16));
     }
 
     @Inject(method = "update", at = @At(value = "HEAD"), remap = false, cancellable = true)
@@ -72,19 +75,15 @@ public abstract class MixinRenderSectionManager {
             remap = false
     )
     private VisibleChunkCollector onCreateTerrainRenderList(VisibleChunkCollector visitor) {
-        if (Config.getAsyncChunkRebuild()) {
-            VisibleChunkCollector collector = CullingStateManager.renderingIris() ? SodiumSectionAsyncUtil.getShadowCollector() : SodiumSectionAsyncUtil.getChunkCollector();
-            return collector == null ? visitor : collector;
-        }
-        return visitor;
+        if (!Config.getAsyncChunkRebuild()) return visitor;
+        VisibleChunkCollector collector = SodiumSectionAsyncUtil.getActiveCollector();
+        return collector == null ? visitor : collector;
     }
 
     @Inject(method = "updateChunks", at = @At(value = "HEAD"), remap = false)
     private void onCreateTerrainRenderList(boolean updateImmediately, CallbackInfo ci) {
-        if (Config.getAsyncChunkRebuild()) {
-            VisibleChunkCollector collector = CullingStateManager.renderingIris() ? SodiumSectionAsyncUtil.getShadowCollector() : SodiumSectionAsyncUtil.getChunkCollector();
-            if (collector != null)
-                this.renderLists = collector.createRenderLists();
-        }
+        if (!Config.getAsyncChunkRebuild()) return;
+        VisibleChunkCollector collector = SodiumSectionAsyncUtil.getActiveCollector();
+        if (collector != null) this.renderLists = collector.createRenderLists();
     }
 }

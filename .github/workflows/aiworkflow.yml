@@ -70,17 +70,50 @@ jobs:
             > "$RUNNER_TEMP/request.json"
 
           echo "=== Consulting Gemini AI ==="
-          GEMINI_MODEL="gemini-flash-latest"
-          HTTP_CODE=$(curl -sS -o "$RUNNER_TEMP/response.json" -w '%{http_code}' -X POST \
-            "https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent" \
-            -H "Content-Type: application/json" \
-            -H "x-goog-api-key: ${GEMINI_KEY}" \
-            -d @"$RUNNER_TEMP/request.json")
-          if [ "$HTTP_CODE" != "200" ]; then
-            echo "Gemini API returned HTTP $HTTP_CODE:"
-            cat "$RUNNER_TEMP/response.json"
+          # Try each model in order; retry transient errors (429/500/503) with backoff
+          MODELS=("gemini-flash-latest" "gemini-flash-lite-latest")
+          MAX_ATTEMPTS=5
+          SUCCESS=false
+
+          for GEMINI_MODEL in "${MODELS[@]}"; do
+            for ATTEMPT in $(seq 1 "$MAX_ATTEMPTS"); do
+              HTTP_CODE=$(curl -sS -o "$RUNNER_TEMP/response.json" -w '%{http_code}' -X POST \
+                "https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent" \
+                -H "Content-Type: application/json" \
+                -H "x-goog-api-key: ${GEMINI_KEY}" \
+                -d @"$RUNNER_TEMP/request.json" || echo "000")
+
+              if [ "$HTTP_CODE" = "200" ]; then
+                SUCCESS=true
+                break 2
+              fi
+
+              echo "[$GEMINI_MODEL] attempt $ATTEMPT/$MAX_ATTEMPTS failed with HTTP $HTTP_CODE:"
+              cat "$RUNNER_TEMP/response.json" 2>/dev/null || true
+              echo
+
+              case "$HTTP_CODE" in
+                000|429|500|502|503|504)
+                  if [ "$ATTEMPT" -lt "$MAX_ATTEMPTS" ]; then
+                    SLEEP=$((ATTEMPT * 15))
+                    echo "Transient error; retrying in ${SLEEP}s..."
+                    sleep "$SLEEP"
+                  fi
+                  ;;
+                *)
+                  # Non-transient (bad request, auth, etc.): move to next model
+                  break
+                  ;;
+              esac
+            done
+            echo "Giving up on $GEMINI_MODEL, trying next model (if any)..."
+          done
+
+          if [ "$SUCCESS" != "true" ]; then
+            echo "All Gemini models failed."
             exit 1
           fi
+          echo "Gemini responded successfully using $GEMINI_MODEL"
 
           # Extract model text; strip markdown fences in case the model adds them anyway
           jq -r '.candidates[0].content.parts[0].text' "$RUNNER_TEMP/response.json" \

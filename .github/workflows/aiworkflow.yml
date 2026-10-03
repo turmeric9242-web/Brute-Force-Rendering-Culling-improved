@@ -74,7 +74,7 @@ jobs:
             > "$RUNNER_TEMP/gemini_request.json"
 
           echo "=== Consulting Gemini AI ==="
-          MODELS=("gemini-flash-latest" )
+          MODELS=("gemini-flash-latest" "gemini-3.5-flash")
           MAX_ATTEMPTS=1
           SUCCESS=false
 

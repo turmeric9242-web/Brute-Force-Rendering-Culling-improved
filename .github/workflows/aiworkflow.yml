@@ -14,6 +14,7 @@ jobs:
     # trust issues opened by repo owners/members/collaborators.
     if: contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.issue.author_association)
     runs-on: ubuntu-latest
+    timeout-minutes: 30
 
     steps:
       - name: Checkout Codebase
@@ -33,6 +34,9 @@ jobs:
       - name: Run AI Agent Pipeline
         env:
           GEMINI_KEY: ${{ secrets.GEMINI_API_KEY }}
+          # Optional fallback: only used if Gemini fails AND this secret exists
+          NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+          NVIDIA_MODEL: ${{ vars.NVIDIA_MODEL || 'meta/llama-3.3-70b-instruct' }}
           ISSUE_TITLE: ${{ github.event.issue.title }}
           ISSUE_BODY: ${{ github.event.issue.body }}
         run: |
@@ -57,22 +61,21 @@ jobs:
             echo "Here is the application source code:"
             cat "$RUNNER_TEMP/codebase.txt"
             echo
-            echo "CRITICAL OUTPUT FORMAT: Output ONLY a valid JSON object with exactly these keys:"
+            echo "CRITICAL OUTPUT FORMAT: Output ONLY a valid JSON object, with no markdown fences and no extra text. It must have exactly these keys:"
             echo '  "explanation": a clean engineering description of what you changed or added,'
             echo '  "filePath": the relative path of the one Java file to modify (e.g. src/main/java/com/example/App.java),'
             echo '  "fixedCode": the full, entire updated code for that file as a string.'
           } > "$RUNNER_TEMP/prompt.txt"
 
-          # jq builds the JSON safely (handles quotes/newlines); --rawfile avoids arg-size limits
+          # ---------- Gemini (primary) ----------
           jq -n --rawfile p "$RUNNER_TEMP/prompt.txt" \
             '{contents: [{parts: [{text: $p}]}],
               generationConfig: {responseMimeType: "application/json"}}' \
-            > "$RUNNER_TEMP/request.json"
+            > "$RUNNER_TEMP/gemini_request.json"
 
           echo "=== Consulting Gemini AI ==="
-          # Try each model in order; retry transient errors (429/500/503) with backoff
           MODELS=("gemini-flash-latest" "gemini-flash-lite-latest")
-          MAX_ATTEMPTS=5
+          MAX_ATTEMPTS=1
           SUCCESS=false
 
           for GEMINI_MODEL in "${MODELS[@]}"; do
@@ -81,7 +84,7 @@ jobs:
                 "https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent" \
                 -H "Content-Type: application/json" \
                 -H "x-goog-api-key: ${GEMINI_KEY}" \
-                -d @"$RUNNER_TEMP/request.json" || echo "000")
+                -d @"$RUNNER_TEMP/gemini_request.json" || echo "000")
 
               if [ "$HTTP_CODE" = "200" ]; then
                 SUCCESS=true
@@ -101,7 +104,6 @@ jobs:
                   fi
                   ;;
                 *)
-                  # Non-transient (bad request, auth, etc.): move to next model
                   break
                   ;;
               esac
@@ -109,15 +111,50 @@ jobs:
             echo "Giving up on $GEMINI_MODEL, trying next model (if any)..."
           done
 
-          if [ "$SUCCESS" != "true" ]; then
-            echo "All Gemini models failed."
+          if [ "$SUCCESS" = "true" ]; then
+            echo "Gemini responded successfully using $GEMINI_MODEL"
+            jq -r '.candidates[0].content.parts[0].text' "$RUNNER_TEMP/response.json" \
+              > "$RUNNER_TEMP/model_output.txt"
+
+          # ---------- NVIDIA (optional fallback) ----------
+          elif [ -n "${NVIDIA_API_KEY:-}" ]; then
+            echo "=== Gemini failed; falling back to NVIDIA ($NVIDIA_MODEL) ==="
+            jq -n --arg m "$NVIDIA_MODEL" --rawfile p "$RUNNER_TEMP/prompt.txt" \
+              '{model: $m,
+                messages: [{role: "user", content: $p}],
+                temperature: 0.2,
+                max_tokens: 8192,
+                stream: false}' \
+              > "$RUNNER_TEMP/nvidia_request.json"
+
+            NV_OK=false
+            for ATTEMPT in $(seq 1 3); do
+              HTTP_CODE=$(curl -sS --max-time 600 -o "$RUNNER_TEMP/nvidia_response.json" -w '%{http_code}' -X POST \
+                "https://integrate.api.nvidia.com/v1/chat/completions" \
+                -H "Content-Type: application/json" \
+                -H "Authorization: Bearer ${NVIDIA_API_KEY}" \
+                -d @"$RUNNER_TEMP/nvidia_request.json" || echo "000")
+              if [ "$HTTP_CODE" = "200" ]; then NV_OK=true; break; fi
+              echo "NVIDIA attempt $ATTEMPT/3 failed with HTTP $HTTP_CODE:"
+              cat "$RUNNER_TEMP/nvidia_response.json" 2>/dev/null || true
+              echo
+              sleep $((ATTEMPT * 15))
+            done
+
+            if [ "$NV_OK" != "true" ]; then
+              echo "Both Gemini and NVIDIA failed."
+              exit 1
+            fi
+            jq -r '.choices[0].message.content' "$RUNNER_TEMP/nvidia_response.json" \
+              > "$RUNNER_TEMP/model_output.txt"
+
+          else
+            echo "All Gemini models failed and no fallback is configured."
             exit 1
           fi
-          echo "Gemini responded successfully using $GEMINI_MODEL"
 
-          # Extract model text; strip markdown fences in case the model adds them anyway
-          jq -r '.candidates[0].content.parts[0].text' "$RUNNER_TEMP/response.json" \
-            | sed '/^```/d' > "$RUNNER_TEMP/ai.json"
+          # Strip markdown fences in case the model adds them anyway
+          sed '/^```/d' "$RUNNER_TEMP/model_output.txt" > "$RUNNER_TEMP/ai.json"
 
           FILE_PATH=$(jq -r '.filePath' "$RUNNER_TEMP/ai.json")
           jq -r '.explanation' "$RUNNER_TEMP/ai.json" > "$RUNNER_TEMP/explanation.txt"
@@ -134,7 +171,6 @@ jobs:
             *..*) echo "Refusing path containing '..': $FILE_PATH"; exit 1 ;;
           esac
 
-          # Apply the change
           mkdir -p "$(dirname "$FILE_PATH")"
           jq -j '.fixedCode' "$RUNNER_TEMP/ai.json" > "$FILE_PATH"
           echo "$FILE_PATH" > "$RUNNER_TEMP/target_path.txt"

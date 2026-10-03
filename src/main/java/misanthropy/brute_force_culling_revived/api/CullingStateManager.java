@@ -132,12 +132,27 @@ public class CullingStateManager {
             int w = mc.getWindow().getWidth();
             int h = mc.getWindow().getHeight();
             for (int i = 0; i < DEPTH_BUFFER_TARGET.length; ++i) {
-                DEPTH_BUFFER_TARGET[i] = new TextureTarget(w, h, false, Minecraft.ON_OSX);
+                DEPTH_BUFFER_TARGET[i] = new TextureTarget(w, h, false, Minecraft.ON_OSX) {
+                    @Override
+                    public void bindWrite(boolean setViewport) {
+                        super.bindWrite(true);
+                    }
+                };
                 DEPTH_BUFFER_TARGET[i].setClearColor(0.0F, 0.0F, 0.0F, 0.0F);
             }
-            CHUNK_CULLING_MAP_TARGET = new TextureTarget(w, h, false, Minecraft.ON_OSX);
+            CHUNK_CULLING_MAP_TARGET = new TextureTarget(w, h, false, Minecraft.ON_OSX) {
+                @Override
+                public void bindWrite(boolean setViewport) {
+                    super.bindWrite(true);
+                }
+            };
             CHUNK_CULLING_MAP_TARGET.setClearColor(0.0F, 0.0F, 0.0F, 0.0F);
-            ENTITY_CULLING_MAP_TARGET = new TextureTarget(w, h, false, Minecraft.ON_OSX);
+            ENTITY_CULLING_MAP_TARGET = new TextureTarget(w, h, false, Minecraft.ON_OSX) {
+                @Override
+                public void bindWrite(boolean setViewport) {
+                    super.bindWrite(true);
+                }
+            };
             ENTITY_CULLING_MAP_TARGET.setClearColor(0.0F, 0.0F, 0.0F, 0.0F);
         });
     }
@@ -159,6 +174,9 @@ public class CullingStateManager {
     public static void onWorldUnload(Level world) {
         if (world != Minecraft.getInstance().level) {
             cleanup();
+            if (world != null) {
+                updateLevelBounds(world);
+            }
         }
     }
 
@@ -278,7 +296,7 @@ public class CullingStateManager {
         final boolean actualVisible = entityMap.isObjectVisible(entity);
         boolean visible = actualVisible || visibleEntity.contains(entity);
 
-        if (profiling) {
+        if (profiling) { 
             preEntityCullingTime += System.nanoTime() - time;
             if (checkCulling) visible = !visible;
         }
@@ -321,7 +339,7 @@ public class CullingStateManager {
         Minecraft mc = Minecraft.getInstance();
         switch (s) {
             case "beforeRunTick" -> {
-                if (((AccessorLevelRender) mc.levelRenderer).getNeedsFullRenderChunkUpdate() && mc.level != null) {
+                if (mc.level != null && (LEVEL_SECTION_RANGE == 0 || ((AccessorLevelRender) mc.levelRenderer).getNeedsFullRenderChunkUpdate())) {
                     if (ModLoader.hasMod("embeddium")) ModLoader.pauseAsync();
                     updateLevelBounds(mc.level);
                 }
@@ -411,7 +429,7 @@ public class CullingStateManager {
         if (checkCulling) return;
 
         final ChunkCullingMap chunkMap = CHUNK_CULLING_MAP;
-        if (Config.getCullChunk() && chunkMap != null && chunkMap.isTransferred()) {
+        if (Config.getCullChunk() && chunkMap != null && chunkMap.isTransferred()) { 
             long time = System.nanoTime();
             chunkMap.readData();
             lastVisibleUpdatedFrame = frame;
@@ -419,7 +437,7 @@ public class CullingStateManager {
         }
 
         final EntityCullingMap entityMap = ENTITY_CULLING_MAP;
-        if (Config.doEntityCulling() && entityMap != null && entityMap.isTransferred()) {
+        if (Config.doEntityCulling() && entityMap != null && entityMap.isTransferred()) { 
             long time = System.nanoTime();
             entityMap.readData();
             lastVisibleUpdatedFrame = frame;
@@ -427,7 +445,7 @@ public class CullingStateManager {
         }
     }
 
-    public static void checkShader() {
+    public static void checkShader() { 
         if (SHADER_LOADER != null) {
             boolean currentEnabled = SHADER_LOADER.enabledShader();
             if (currentEnabled != usingShader) {
@@ -582,14 +600,14 @@ public class CullingStateManager {
                 if (!Config.shouldSkipEntityType(e.getType())) table.addObject(e);
             }
 
-            for (Object info : ((IEntitiesForRender) mc.levelRenderer).bruteForceRenderingRevived$renderChunksInFrustum()) {
+            for (Object info : ((IEntitiesForRender) mc.levelRenderer).bruteForceRenderingRevived$renderChunksInFrustum()) { 
                 for (BlockEntity be : ((IRenderChunkInfo) info).bruteForceRenderingRevived$getRenderChunk().getCompiledChunk().getRenderableBlockEntities()) {
                     if (!Config.shouldSkipBlockEntityType(be.getType())) table.addObject(be);
                 }
             }
 
             table.addAllTemp();
-        }
+        } 
     }
 
     public static void useShader(ShaderInstance instance) { RenderSystem.setShader(() -> instance); }

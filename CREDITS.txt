@@ -62,5 +62,5 @@ It also contains a partial repackaging of the javaxdelta library from http://sou
 with credit to it's authors.
 
 Forge Mod Loader downloads components from the Minecraft Coder Pack
-(http://mcp.ocean-labs.de/index.php/Main_Page) with kind permission from the MCP team.
+(http://mcp.ocean-labs.de/index.php/Main_Page) with kind permission from the MCP team. yeah
 

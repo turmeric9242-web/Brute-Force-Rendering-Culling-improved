@@ -24,7 +24,9 @@ public abstract class MixinFrustum {
             return;
         }
         double sizeX = aabb.maxX - aabb.minX;
-        if (sizeX < 15.0 || sizeX > 17.0) {
+        double sizeY = aabb.maxY - aabb.minY;
+        double sizeZ = aabb.maxZ - aabb.minZ;
+        if (sizeX < 15.0 || sizeX > 17.0 || sizeY < 15.0 || sizeY > 17.0 || sizeZ < 15.0 || sizeZ > 17.0) {
             return;
         }
 

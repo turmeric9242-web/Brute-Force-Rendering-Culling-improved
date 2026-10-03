@@ -48,7 +48,8 @@ public class ChunkCullingMap extends CullingMap {
     }
 
     public boolean isChunkVisible(int posX, int posY, int posZ, boolean checkForChunk) {
-        int index = 1 + (((posX + renderDistance) * spacePartitionSize * CullingStateManager.LEVEL_SECTION_RANGE + (posZ + renderDistance) * CullingStateManager.LEVEL_SECTION_RANGE + posY) << 2);
+        int range = Math.max(CullingStateManager.LEVEL_SECTION_RANGE, 1);
+        int index = 1 + (((posX + renderDistance) * spacePartitionSize * range + (posZ + renderDistance) * range + posY) << 2);
 
         if (index >= 0 && index < cullingBuffer.limit()) {
             return (cullingBuffer.get(index) & 0xFF) > (checkForChunk ? 0 : 127);

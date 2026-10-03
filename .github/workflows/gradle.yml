@@ -1,14 +1,11 @@
-name: Java CI with Gradle and Release on Issue
+name: Java CI with Gradle and Release on Commit
 
 on:
-  issues:
-    types: [opened, edited]
+  push:
+    branches: [ "main" ]
 
 jobs:
   build-and-release:
-    # Only run this job if the issue title is exactly "MAKE"
-    if: github.event.issue.title == 'MAKE'
-    
     runs-on: ubuntu-latest
     permissions:
       contents: write # Required to create a release and upload assets
@@ -34,10 +31,10 @@ jobs:
     - name: Create Release and Upload Jar Artifacts
       uses: softprops/action-gh-release@v2
       with:
-        tag_name: release-issue-${{ github.event.issue.number }}-${{ github.run_number }}
-        name: Release Triggered by Issue #${{ github.event.issue.number }}
+        tag_name: release-${{ github.sha }}
+        name: Release Build ${{ github.sha }}
         body: |
-          Automated release generated from issue **${{ github.event.issue.title }}**.
+          Automated release generated from commit **${{ github.sha }}**.
           Triggered by @${{ github.actor }}.
         files: build/libs/*.jar
       env:

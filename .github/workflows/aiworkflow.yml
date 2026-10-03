@@ -36,7 +36,7 @@ jobs:
           GEMINI_KEY: ${{ secrets.GEMINI_API_KEY }}
           # Optional fallback: only used if Gemini fails AND this secret exists
           NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
-          NVIDIA_MODEL: ${{ vars.NVIDIA_MODEL || 'nvidia/nemotron-3-ultra-550b-a55b' }}
+          NVIDIA_MODEL: ${{ vars.NVIDIA_MODEL || 'qwen/qwen2.5-coder-32b-instruct'}}
           ISSUE_TITLE: ${{ github.event.issue.title }}
           ISSUE_BODY: ${{ github.event.issue.body }}
         run: |

@@ -13,6 +13,7 @@ public class OcclusionCullerThread extends Thread {
     private volatile boolean finished = false;
     private static final Semaphore TICK_SEMAPHORE = new Semaphore(0);
     private static long lastSignalNanos;
+    private static final long BUDGET_NS = 30L * 1_000_000L;
 
     public OcclusionCullerThread() {
         super("BFR-OcclusionCuller");
@@ -55,6 +56,7 @@ public class OcclusionCullerThread extends Thread {
 
     @Override
     public void run() {
+        Thread.currentThread().setPriority(Thread.MIN_PRIORITY);
         while (!finished) {
             try {
                 TICK_SEMAPHORE.acquire();
@@ -69,7 +71,15 @@ public class OcclusionCullerThread extends Thread {
                     if (Config.getAsyncChunkRebuild() && ModLoader.hasSodium()) {
                         long start = System.nanoTime();
                         SodiumSectionAsyncUtil.asyncSearchRebuildSection();
-                        CullingStateManager.addChunkCullingTime(System.nanoTime() - start);
+                        long durationNs = System.nanoTime() - start;
+                        CullingStateManager.addChunkCullingTime(durationNs);
+
+                        if (durationNs > BUDGET_NS) {
+                            long cooldownMs = (durationNs - BUDGET_NS) / 1_000_000L;
+                            if (cooldownMs > 0) {
+                                Thread.sleep(cooldownMs);
+                            }
+                        }
                     }
                 }
             } catch (InterruptedException e) {

@@ -70,12 +70,17 @@ jobs:
             > "$RUNNER_TEMP/request.json"
 
           echo "=== Consulting Gemini AI ==="
-          curl -sS --fail-with-body -X POST \
-            "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent" \
+          GEMINI_MODEL="gemini-flash-latest"
+          HTTP_CODE=$(curl -sS -o "$RUNNER_TEMP/response.json" -w '%{http_code}' -X POST \
+            "https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent" \
             -H "Content-Type: application/json" \
             -H "x-goog-api-key: ${GEMINI_KEY}" \
-            -d @"$RUNNER_TEMP/request.json" \
-            -o "$RUNNER_TEMP/response.json"
+            -d @"$RUNNER_TEMP/request.json")
+          if [ "$HTTP_CODE" != "200" ]; then
+            echo "Gemini API returned HTTP $HTTP_CODE:"
+            cat "$RUNNER_TEMP/response.json"
+            exit 1
+          fi
 
           # Extract model text; strip markdown fences in case the model adds them anyway
           jq -r '.candidates[0].content.parts[0].text' "$RUNNER_TEMP/response.json" \
